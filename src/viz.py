@@ -353,7 +353,7 @@ def plot_position_heatmap(pos_df: pd.DataFrame, player_name: str):
     )
     
     ax.set_title(
-        f"🗺️ Carte de chaleur — {player_name}",
+        f"Carte de chaleur — {player_name}",
         color="white", fontsize=16, fontweight="bold", pad=15
     )
     

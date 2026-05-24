@@ -182,21 +182,42 @@ def build_player_tracking_df(game_id: int, team: str) -> Optional[pd.DataFrame]:
         player_df = player_df.dropna(subset=["x", "y"])
 
         # Calcul de la vitesse frame par frame
-        # dx et dy en mètres entre deux frames consécutives
         player_df = player_df.sort_values("Frame")
         dx = player_df["x"].diff()
         dy = player_df["y"].diff()
+        frame_diff = player_df["Frame"].diff()
 
-        # distance en mètres, convertie en km/h
-        # Si un joueur disparaît plusieurs frames (hors caméra), le diff
-        # donnerait une vitesse aberrante — on la plafonne à 40 km/h
         dist_m = np.sqrt(dx**2 + dy**2)
-        speed_ms = dist_m / DT  # mètres/seconde
-        speed_kmh = speed_ms * 3.6
+        speed_kmh_raw = dist_m / DT * 3.6
 
-        # Plafonnement à 40 km/h (vitesse max humaine ~44 km/h)
-        player_df["speed_kmh"] = speed_kmh.clip(0, 40)
-        player_df["distance_m_frame"] = dist_m.clip(0, 5)  # max 5m par frame à 25fps
+        # Filtre de cohérence physique
+        #
+        # Règle 1 — Téléportations : frame_diff > 1 ou position précédente NaN
+        # Le joueur était hors caméra → le diff ne reflète pas un vrai déplacement
+        gap_mask = (frame_diff > 1) | player_df["x"].shift(1).isna()
+        speed_kmh_raw[gap_mask] = np.nan
+        dist_m[gap_mask] = np.nan
+
+        # Règle 2 — Erreurs de tracking (mauvaise identification du joueur)
+        # Un joueur de foot ne peut pas dépasser ~36 km/h (record Mbappé en match ~35.7)
+        # Toute vitesse > 36 km/h est nécessairement une erreur de tracking
+        impossible_mask = speed_kmh_raw > 36
+        speed_kmh_raw[impossible_mask] = np.nan
+        dist_m[impossible_mask] = np.nan
+
+        # Règle 3 — Pics isolés (1-2 frames aberrantes entourées de vitesses normales)
+        # Ex : 0 → 0 → 80 → 0 → 0 : le 80 est un artefact
+        # On vérifie que la frame suivante confirme aussi une vitesse élevée
+        speed_s = pd.Series(speed_kmh_raw.values)
+        next_speed = speed_s.shift(-1)
+        prev_speed = speed_s.shift(1)
+        # Pic isolé = speed > 25 mais ni la frame avant ni après ne dépasse 15 km/h
+        isolated = (speed_s > 25) & (next_speed.fillna(0) < 15) & (prev_speed.fillna(0) < 15)
+        speed_kmh_raw[isolated.values] = np.nan
+        dist_m[isolated.values] = np.nan
+
+        player_df["speed_kmh"] = speed_kmh_raw.fillna(0)
+        player_df["distance_m_frame"] = dist_m.fillna(0)
 
         rows.append(player_df)
 
