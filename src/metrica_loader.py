@@ -8,10 +8,9 @@ Contrairement à SkillCorner (actions sur balle uniquement),
 Metrica enregistre la position de TOUS les joueurs à CHAQUE frame
 → on peut calculer le vrai kilométrage total du match.
 
-3 matchs disponibles, joueurs anonymisés :
+2 matchs disponibles en open data, joueurs anonymisés :
   - Sample_Game_1 : ~96 min
   - Sample_Game_2 : ~93 min
-  - Sample_Game_3 : ~90 min (format légèrement différent)
 
 Structure des fichiers :
   - RawTrackingData_Home_Team.csv : positions équipe domicile frame par frame

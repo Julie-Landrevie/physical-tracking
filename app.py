@@ -100,7 +100,7 @@ with st.sidebar:
         options=["SkillCorner", "Metrica Sports"],
         captions=[
             "Actions sur balle · A-League 2024/25",
-            "Tracking complet · 3 matchs anonymisés"
+            "Tracking complet · 2 matchs anonymisés"
         ],
         index=0
     )
@@ -345,7 +345,7 @@ if data_ready:
                                     use_container_width=True)
 
             # Heatmap
-            st.markdown("##### 🗺️ Carte de chaleur")
+            st.markdown("##### 🌡️ Carte de chaleur")
             if source == "SkillCorner":
                 pid = prow.get("player_id")
                 pos_df = get_player_positions(selected_match_id, pid) if pid else pd.DataFrame()
