@@ -15,7 +15,7 @@ Ce projet analyse les **données de tracking broadcast** de SkillCorner pour ext
 
 La question centrale : **Comment les joueurs se déplacent-ils vraiment sur un match de haut niveau ?**
 
-À travers 10 matchs des meilleures équipes européennes (Man City vs Liverpool, Barça vs Real Madrid, Bayern vs Dortmund...), on répond à des questions concrètes :
+À travers 10 matchs des meilleures équipes européennes (Man City vs Liverpool, Barça vs Real Madrid, Bayern vs Dortmund...), on répond à des questions concrètes comme :
 - Qui a couru le plus dans le Classique ?
 - Quel joueur a atteint la plus haute vitesse dans ce choc européen ?
 - Comment évolue l'intensité physique entre la 1ère et la 2ème mi-temps ?
@@ -27,7 +27,7 @@ La question centrale : **Comment les joueurs se déplacent-ils vraiment sur un m
 | Onglet | Ce qu'il montre |
 |---|---|
 | **🏟️ Vue match** | Distance totale, zones d'intensité, scatter profils physiques, tableau complet |
-| **👤 Profil joueur** | Courbe de vitesse sur 90min, heatmap de présence, répartition par zones |
+| **👤 Profil joueur** | Courbe de vitesse, heatmap de présence, répartition par zones |
 | **⚔️ Comparaison** | Radar comparatif multi-joueurs (jusqu'à 4), tableau côte-à-côte |
 | **📈 Multi-matchs** | Évolution d'une métrique sur plusieurs matchs (chargement dynamique) |
 
@@ -38,14 +38,13 @@ La question centrale : **Comment les joueurs se déplacent-ils vraiment sur un m
 ```
 physical-tracking/
 │
-├── app.py                                        # Application Streamlit principale
-├── requirements.txt                              # Dépendances Python
-├── README.md
+├── app.py                          # Application Streamlit principale
+├── requirements.txt                # Dépendances Python
 │
 ├── src/
 │   ├── __init__.py
-│   ├── data_loader.py                            # Chargement & calcul des métriques
-│   └── viz.py                                    # Toutes les visualisations
+│   ├── data_loader.py              # Chargement & calcul des métriques
+│   └── viz.py                      # Toutes les visualisations
 │
 └── notebooks/
     └── 01_physical_tracking_exploration.ipynb   # Exploration interactive
@@ -66,13 +65,13 @@ physical-tracking/
 
 ### Zones d'intensité (standard clubs pro)
 
-| Zone | Seuil vitesse |
-|---|---|
-| 🟢 Marche | 0 → 7 km/h |
-| 🟡 Jogging | 7 → 14 km/h |
-| 🟠 Course modérée | 14 → 19 km/h |
-| 🔴 Course intense | 19 → 23 km/h |
-| 🚨 Sprint | > 23 km/h |
+| Zone | Seuil vitesse | Couleur |
+|---|---|---|
+| 🟢 Marche | 0 → 7 km/h | |
+| 🟡 Jogging | 7 → 14 km/h | |
+| 🟠 Course modérée | 14 → 19 km/h | |
+| 🔴 Course intense | 19 → 23 km/h | |
+| 🚨 Sprint | > 23 km/h | |
 
 ---
 
@@ -86,6 +85,7 @@ cd physical-tracking
 # 2. Créer un environnement virtuel
 python3 -m venv venv
 source venv/bin/activate   # Mac/Linux
+# venv\Scripts\activate    # Windows
 
 # 3. Installer les dépendances
 pip install -r requirements.txt
@@ -120,6 +120,8 @@ L'app s'ouvre automatiquement sur `http://localhost:8501`
 
 Le **broadcast tracking** de SkillCorner extrait les positions des joueurs depuis les images TV (10 fps), sans caméras dédiées. Il couvre l'ensemble du match avec ~97% de précision sur l'identification des joueurs.
 
+Matchs disponibles :
+
 | Match | Compétition | Date |
 |---|---|---|
 | Manchester City vs Liverpool | Premier League | 10/11/2019 |
@@ -133,7 +135,7 @@ Le **broadcast tracking** de SkillCorner extrait les positions des joueurs depui
 | Liverpool vs Atletico Madrid | Champions League | 11/03/2020 |
 | Bayern Munich vs Chelsea | Champions League | 25/03/2020 |
 
-*Data credit : [SkillCorner](https://skillcorner.com) — please credit SkillCorner if you use this data.*
+*Data credit: [SkillCorner](https://skillcorner.com) — please credit SkillCorner if you use this data.*
 
 ---
 
@@ -148,9 +150,9 @@ Le **broadcast tracking** de SkillCorner extrait les positions des joueurs depui
 
 ## 🔗 Projets liés
 
-- [MPG Optimizer](https://github.com/Julie-Landrevie/mpg-analytics) — Fantasy football analytics
 - [xG & Shooting Profile Analysis](https://github.com/Julie-Landrevie/xg-shooting-analysis) — StatsBomb Open Data
 - [Pass Network & Team Structure](https://github.com/Julie-Landrevie/pass-network) — À venir
+- [Tactical Dashboard](https://github.com/Julie-Landrevie/tactical-dashboard) — Live
 
 ---
 
@@ -161,3 +163,26 @@ Le **broadcast tracking** de SkillCorner extrait les positions des joueurs depui
 Certifiée Sports Analytics (University of Michigan) · Analyse Vidéo et Data dans le Sport (Université de Lorraine) · Dartfish Certified Analyst
 
 📧 julie.landrevie@free.fr · [LinkedIn](https://www.linkedin.com/in/julie-landrevie) · [GitHub](https://github.com/Julie-Landrevie)
+
+---
+
+## 🔄 Mise à jour — Architecture Dual-Source
+
+L'app intègre maintenant **deux sources de données complémentaires** :
+
+### SkillCorner Open Data (A-League 2024/25)
+- 10 matchs broadcast tracking
+- Actions sur balle : vitesse, zones, contexte tactique
+
+### Metrica Sports Open Data
+- 2 matchs avec tracking XY complet à 25 fps
+- Vrai kilométrage (8-11 km/match), heatmap complète, déplacements hors ballon
+
+```
+src/
+├── data_loader.py      ← SkillCorner (dynamic_events)
+├── metrica_loader.py   ← Metrica (tracking XY 25fps)
+└── viz.py              ← Visualisations partagées
+```
+
+Sélectionne la source dans la sidebar — l'app s'adapte automatiquement.

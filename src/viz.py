@@ -21,7 +21,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from mplsoccer import Pitch, VerticalPitch
 import streamlit as st
-from src.data_loader import SPEED_ZONES, ZONE_COLORS
+from src.data_loader import SPEED_ZONES_KMH as SPEED_ZONES, ZONE_COLORS
 
 # ============================================================
 # COULEURS ET THÈME DU DASHBOARD
@@ -88,14 +88,15 @@ def plot_distance_bars(metrics_df: pd.DataFrame, top_n: int = 15) -> go.Figure:
             hovertemplate="<b>%{y}</b><br>Distance: %{x:.2f} km<extra></extra>"
         ))
     
+    theme = {k: v for k, v in PLOTLY_THEME.items() if k != "yaxis"}
     fig.update_layout(
         title={"text": f"🏃 Distance totale — Top {top_n} joueurs", "font": {"size": 18}},
         xaxis_title="Distance parcourue (km)",
-        yaxis={"categoryorder": "total ascending"},
+        yaxis={"categoryorder": "total ascending", "gridcolor": COLORS["grid"], "linecolor": COLORS["grid"]},
         barmode="overlay",
         height=max(400, top_n * 35),
         showlegend=True,
-        **PLOTLY_THEME
+        **theme
     )
     
     return fig
@@ -113,7 +114,7 @@ def plot_intensity_zones(metrics_df: pd.DataFrame, top_n: int = 15) -> go.Figure
     ont-ils passé leur temps ? C'est crucial pour comparer les profils
     physiques (joueur explosif vs joueur endurant).
     
-    Les zones sont : Marche / Jogging / Course modérée / Course intense / Sprint
+    Les zones sont : Jogging / Running / Haute intensité (hsr) / Sprint
     """
     df = metrics_df.head(top_n).copy()
     df["label"] = df["player_name"] + " (" + df["team_name"] + ")"
@@ -135,14 +136,15 @@ def plot_intensity_zones(metrics_df: pd.DataFrame, top_n: int = 15) -> go.Figure
             hovertemplate=f"<b>%{{y}}</b><br>{zone_name}: %{{x:.0f}} m<extra></extra>"
         ))
     
+    theme = {k: v for k, v in PLOTLY_THEME.items() if k != "yaxis"}
     fig.update_layout(
         title={"text": "⚡ Répartition par zones d'intensité", "font": {"size": 18}},
         xaxis_title="Distance (mètres)",
-        yaxis={"categoryorder": "total ascending"},
+        yaxis={"categoryorder": "total ascending", "gridcolor": COLORS["grid"], "linecolor": COLORS["grid"]},
         barmode="stack",
         height=max(400, top_n * 35),
         legend={"title": "Zone d'intensité", "orientation": "h", "y": -0.15},
-        **PLOTLY_THEME
+        **theme
     )
     
     return fig
@@ -154,30 +156,30 @@ def plot_intensity_zones(metrics_df: pd.DataFrame, top_n: int = 15) -> go.Figure
 
 def plot_speed_timeline(timeline_df: pd.DataFrame, player_name: str) -> go.Figure:
     """
-    Courbe de vitesse d'un joueur tout au long du match.
-    
-    On voit clairement :
-    - Les phases de sprint (pics vers le haut)
-    - La fatigue (vitesse moyenne qui baisse en 2ème mi-temps)
-    - Les périodes sans données (caméra zoomée ailleurs)
-    
-    Une ligne rouge à 23 km/h marque le seuil de sprint.
+    Courbe de vitesse brute d'un joueur — une valeur par action (pas agrégée).
+
+    Chaque point = une action avec ballon et sa vitesse réelle.
+    Les pics au-dessus de 25 km/h = sprints effectifs.
+    Le lissage (rolling) est léger pour ne pas écraser les pics.
+
+    Zones colorées :
+      - Fond vert  : 1ère mi-temps
+      - Fond orange : 2ème mi-temps
+      - Points rouges : actions en sprint (speed_avg_band == "sprinting")
     """
     if timeline_df.empty:
         return go.Figure()
-    
-    # Appliquer un lissage (rolling average) pour rendre la courbe plus lisible
-    # window=5 = moyenne sur 5 frames consécutives (= 0.5 seconde)
+
     timeline_df = timeline_df.copy()
-    timeline_df["speed_smooth"] = timeline_df["speed_kmh"].rolling(window=5, center=True).mean()
-    
-    # Séparer les deux mi-temps
+    # Lissage léger (window=3) pour lisser sans écraser les pics de sprint
+    timeline_df["speed_smooth"] = timeline_df["speed_avg"].rolling(window=3, center=True, min_periods=1).mean()
+
     p1 = timeline_df[timeline_df["period"] == 1]
     p2 = timeline_df[timeline_df["period"] == 2]
-    
+
     fig = go.Figure()
-    
-    # Courbe lissée (principale)
+
+    # Courbe principale par mi-temps
     for period_df, period_label, color in [
         (p1, "1ère mi-temps", COLORS["primary"]),
         (p2, "2ème mi-temps", COLORS["accent"])
@@ -191,27 +193,44 @@ def plot_speed_timeline(timeline_df: pd.DataFrame, player_name: str) -> go.Figur
             name=period_label,
             line={"color": color, "width": 1.5},
             fill="tozeroy",
-            fillcolor=color.replace(")", ", 0.1)").replace("rgb", "rgba"),
+            opacity=0.7,
         ))
-    
-    # Ligne seuil sprint (23 km/h)
+
+    # Marqueurs rouges sur les actions en sprint
+    if "speed_avg_band" in timeline_df.columns:
+        sprints = timeline_df[timeline_df["speed_avg_band"] == "sprinting"]
+    else:
+        sprints = timeline_df[timeline_df["speed_avg"] >= 25]
+
+    if not sprints.empty:
+        fig.add_trace(go.Scatter(
+            x=sprints["minutes"],
+            y=sprints["speed_avg"],
+            mode="markers",
+            name="Sprint",
+            marker={"color": "#FF4444", "size": 10, "symbol": "star",
+                    "line": {"width": 1, "color": "white"}},
+            hovertemplate="<b>Sprint</b><br>Minute: %{x:.1f}'<br>Vitesse: %{y:.1f} km/h<extra></extra>"
+        ))
+
+    # Ligne seuil sprint (25 km/h = seuil réel SkillCorner)
     fig.add_hline(
-        y=23, 
-        line_dash="dot", 
+        y=25,
+        line_dash="dot",
         line_color="#FF4444",
-        annotation_text="Seuil sprint (23 km/h)",
+        annotation_text="Seuil sprint SkillCorner (25 km/h)",
         annotation_position="top right",
         annotation_font_color="#FF4444"
     )
-    
+
+    theme = {k: v for k, v in PLOTLY_THEME.items() if k not in ("xaxis", "yaxis")}
     fig.update_layout(
         title={"text": f"📈 Profil de vitesse — {player_name}", "font": {"size": 18}},
-        xaxis_title="Temps de jeu (minutes)",
-        yaxis_title="Vitesse (km/h)",
-        xaxis={"range": [0, timeline_df["minutes"].max() + 1]},
-        **PLOTLY_THEME
+        xaxis={"title": "Temps de jeu (minutes)", "range": [0, timeline_df["minutes"].max() + 1], "gridcolor": "#2A2A2A"},
+        yaxis={"title": "Vitesse (km/h)", "gridcolor": "#2A2A2A"},
+        **theme
     )
-    
+
     return fig
 
 
@@ -289,22 +308,18 @@ def plot_distance_vs_maxspeed(metrics_df: pd.DataFrame) -> go.Figure:
 # 5. HEATMAP DE PRÉSENCE SUR LE TERRAIN (mplsoccer)
 # ============================================================
 
-def plot_position_heatmap(df_speeds: pd.DataFrame, player_id: int, player_name: str):
+def plot_position_heatmap(pos_df: pd.DataFrame, player_name: str):
     """
     Heatmap des positions d'un joueur sur le terrain.
     
-    Plus une zone est chaude (rouge/jaune), plus le joueur y a passé du temps.
-    Permet de visualiser le couloir et la zone d'action préférentielle du joueur.
+    Reçoit un DataFrame déjà filtré (issu de get_player_positions())
+    avec colonnes x, y (et optionnellement period).
     
     SkillCorner utilise un système de coordonnées :
       - x : -52.5 (but gauche) → +52.5 (but droit)
       - y : -34 (ligne gauche) → +34 (ligne droite)
     """
-    player_df = df_speeds[
-        (df_speeds["player_id"] == player_id) &
-        df_speeds["x"].notna() &
-        df_speeds["y"].notna()
-    ].copy()
+    player_df = pos_df.dropna(subset=["x", "y"]).copy()
     
     if player_df.empty:
         return None
@@ -312,9 +327,11 @@ def plot_position_heatmap(df_speeds: pd.DataFrame, player_id: int, player_name: 
     # Créer un terrain de foot avec mplsoccer
     # pitch_color="black" pour le fond sombre
     pitch = Pitch(
-        pitch_type="skillcorner",    # coordonnées SkillCorner (-52.5 à 52.5)
-        pitch_color="#0A1628",       # couleur du terrain (bleu nuit)
-        line_color="#3A7BD5",        # couleur des lignes
+        pitch_type="skillcorner",
+        pitch_length=105,
+        pitch_width=68,
+        pitch_color="#0A1628",
+        line_color="#3A7BD5",
         linewidth=1.5,
         goal_type="box"
     )
@@ -384,30 +401,35 @@ def plot_physical_radar(metrics_df: pd.DataFrame, player_ids: list, player_names
             normalized[f"pct_{col}"] = normalized[col].rank(pct=True) * 100
     
     colors_radar = [COLORS["primary"], COLORS["accent"], "#3A7BD5", "#9B59B6"]
-    
+
+    def hex_to_rgba(hex_color: str, alpha: float = 0.15) -> str:
+        h = hex_color.lstrip("#")
+        r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+        return f"rgba({r},{g},{b},{alpha})"
+
     fig = go.Figure()
-    
+
     for i, (player_id, player_name) in enumerate(zip(player_ids, player_names)):
         row = normalized[normalized["player_id"] == player_id]
         if row.empty:
             continue
         row = row.iloc[0]
-        
+
         values = [
-            row.get(f"pct_{col}", 50) 
+            row.get(f"pct_{col}", 50)
             for col in radar_metrics.keys()
         ]
-        # Fermer le radar (répéter le premier point)
         values_closed = values + [values[0]]
         cats_closed = categories + [categories[0]]
-        
+        color = colors_radar[i % len(colors_radar)]
+
         fig.add_trace(go.Scatterpolar(
             r=values_closed,
             theta=cats_closed,
             fill="toself",
             name=player_name,
-            line={"color": colors_radar[i % len(colors_radar)], "width": 2},
-            fillcolor=colors_radar[i % len(colors_radar)].replace("#", "rgba(") + ",0.15)",
+            line={"color": color, "width": 2},
+            fillcolor=hex_to_rgba(color, 0.15),
             opacity=0.9,
         ))
     
@@ -417,7 +439,7 @@ def plot_physical_radar(metrics_df: pd.DataFrame, player_ids: list, player_names
             "radialaxis": {
                 "visible": True,
                 "range": [0, 100],
-                "ticksuffix": "%ile",
+                "ticksuffix": "%",
                 "gridcolor": COLORS["grid"],
                 "linecolor": COLORS["grid"],
             },
@@ -475,12 +497,12 @@ def plot_multi_match_evolution(all_metrics: list, metric_col: str, metric_label:
             hovertemplate=f"<b>%{{x}}</b><br>{metric_label}: %{{y:.2f}}<extra>{player_name}</extra>"
         ))
     
+    theme = {k: v for k, v in PLOTLY_THEME.items() if k not in ("xaxis", "yaxis")}
     fig.update_layout(
         title={"text": f"📊 Évolution — {metric_label}", "font": {"size": 18}},
-        xaxis_title="Match",
-        yaxis_title=metric_label,
-        xaxis={"tickangle": -30},
-        **PLOTLY_THEME
+        xaxis={"title": "Match", "tickangle": -30, "gridcolor": "#2A2A2A"},
+        yaxis={"title": metric_label, "gridcolor": "#2A2A2A"},
+        **theme
     )
     
     return fig
