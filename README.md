@@ -2,11 +2,14 @@
 
 > Analyse physique dual-source — SkillCorner Open Data · Metrica Sports Open Data
 
+🚀 **[Accéder à l'application](https://physical-tracking.streamlit.app)**
+
 [![Python](https://img.shields.io/badge/Python-3.10+-blue?style=flat-square&logo=python)](https://www.python.org)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.32+-FF4B4B?style=flat-square&logo=streamlit)](https://streamlit.io)
 [![SkillCorner](https://img.shields.io/badge/SkillCorner-Open_Data-00FF87?style=flat-square)](https://github.com/SkillCorner/opendata)
 [![Metrica](https://img.shields.io/badge/Metrica_Sports-Open_Data-3A7BD5?style=flat-square)](https://github.com/metrica-sports/sample-data)
 [![Status](https://img.shields.io/badge/Status-Live-success?style=flat-square)](.)
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://physical-tracking.streamlit.app)
 
 ---
 
