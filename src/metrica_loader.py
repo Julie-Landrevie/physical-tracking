@@ -281,10 +281,12 @@ def compute_metrica_metrics(game_id: int) -> Optional[pd.DataFrame]:
                 zone_metrics[f"dist_{zone_name}"] = round(zone_dist, 1)
                 zone_metrics[f"min_{zone_name}"] = round(zone_time, 2)
 
-            # Sprints : séquences continues au-dessus de 25 km/h (min 1 seconde = 25 frames)
+            # Sprints : séquences continues au-dessus de 25 km/h, durée minimale de 25 frames (1 seconde)
             is_sprint = group["speed_kmh"] >= 25.0
-            # Détecter les nouvelles entrées en sprint
-            sprint_entries = (is_sprint & ~is_sprint.shift(1, fill_value=False)).sum()
+            run_id = (is_sprint != is_sprint.shift(fill_value=False)).cumsum()
+            run_info = pd.DataFrame({"run_id": run_id.values, "is_sprint": is_sprint.values})
+            run_sizes = run_info.groupby("run_id").agg(size=("is_sprint", "size"), is_sprint=("is_sprint", "first"))
+            sprint_entries = int((run_sizes["is_sprint"] & (run_sizes["size"] >= 25)).sum())
 
             # HIR : distance à >20 km/h
             hir_mask = group["speed_kmh"] >= 20.0
