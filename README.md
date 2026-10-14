@@ -198,9 +198,10 @@ streamlit run app.py
 
 ## 🔗 Projets liés
 
-- [MPG Optimizer](https://github.com/Julie-Landrevie/mpg-analytics) — Fantasy football analytics
+- [Suivi de charge en football féminin d'élite](https://github.com/Julie-Landrevie/womens-football-load-monitoring) — Charge interne et externe, GPS, retour au jeu ([tableau de bord](https://julie-landrevie.github.io/womens-football-load-monitoring/))
+- [MPG Optimizer](https://github.com/Julie-Landrevie/mpg-optimizer) — Fantasy football analytics
 - [xG & Shooting Profile Analysis](https://github.com/Julie-Landrevie/xg-shooting-analysis) — StatsBomb Open Data
-- [Pass Network & Team Structure](https://github.com/Julie-Landrevie/pass-network) — À venir
+- [Pass Network & Team Structure](https://github.com/Julie-Landrevie/pass-network) — Réseaux de passes et joueurs pivots (StatsBomb)
 
 ---
 
