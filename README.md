@@ -209,6 +209,6 @@ streamlit run app.py
 
 **Julie Landrevie** — Football Data & Video Analyst
 
-Certifiée Sports Analytics (University of Michigan) · Analyse Vidéo et Data dans le Sport (Université de Lorraine) · Dartfish Certified Analyst
+Certifiée Sports Analytics (University of Michigan) · Analyse Vidéo et Data dans le Sport (Université de Lorraine) · Dartfish Certified Analyst · Once Sport Certified Analyst
 
 📧 julie.landrevie@free.fr · [LinkedIn](https://www.linkedin.com/in/julie-landrevie) · [GitHub](https://github.com/Julie-Landrevie)
