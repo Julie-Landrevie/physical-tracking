@@ -1,0 +1,5 @@
+# Fichiers techniques à ne pas publier
+.DS_Store
+__pycache__/
+*.pyc
+.ipynb_checkpoints/

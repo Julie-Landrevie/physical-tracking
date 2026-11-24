@@ -1,547 +1,315 @@
 """
-app.py — Physical Intensity & Tracking Analysis
-Sources duales : SkillCorner (actions sur balle) + Metrica (tracking complet)
+app.py — Physical Intensity & Tracking Analysis (français / anglais, clair / sombre)
+Sources : SkillCorner (actions sur balle) + Metrica Sports (tracking complet)
+Charte commune : jl_ui.py et .streamlit/config.toml (graphiques : src/viz.py).
 """
 
-import streamlit as st
-import pandas as pd
-import numpy as np
 import matplotlib
+import streamlit as st
+
 matplotlib.use("Agg")
 
-from src.data_loader import (
-    get_matches_dict, load_match_metadata,
-    compute_player_metrics, compute_speed_timeline,
-    get_player_positions, get_match_label,
-    ZONE_COLORS, SPEED_ZONES_SKC,
-)
-from src.metrica_loader import (
-    METRICA_MATCHES, compute_metrica_metrics,
-    compute_metrica_speed_timeline, get_metrica_positions,
-    ZONE_COLORS as ZONE_COLORS_M,
-)
-from src.viz import (
-    plot_distance_bars, plot_intensity_zones, plot_speed_timeline,
-    plot_distance_vs_maxspeed, plot_position_heatmap,
-    plot_physical_radar, plot_multi_match_evolution, COLORS,
-)
+from jl_ui import footer, fr_num, header, kpi, lang, note, setup, t  # noqa: E402
+
+setup("Physical Tracking — Julie Landrevie", "Physical Tracking — Julie Landrevie", icon="⚡")
+
+import pandas as pd  # noqa: E402
+import plotly.graph_objects as go  # noqa: E402
+
+from src import viz  # noqa: E402
+from src.data_loader import compute_player_metrics, compute_speed_timeline, get_matches_dict, get_player_positions  # noqa: E402
+from src.metrica_loader import (METRICA_MATCHES, compute_metrica_metrics, compute_metrica_speed_timeline,  # noqa: E402
+                                get_metrica_positions)
+from src.viz import (ZONE_COLORS, plot_distance_bars, plot_distance_vs_maxspeed, plot_intensity_zones,  # noqa: E402
+                     plot_multi_match_evolution, plot_physical_radar, plot_position_heatmap, plot_speed_timeline,
+                     zone_label)
+
+viz.set_lang(lang())
+SKC, MET = "skillcorner", "metrica"
+ALL = "__all__"
+
+
+def chart(fig):
+    st.plotly_chart(fig, width="stretch", theme="streamlit")
+
+
+METRIC_LABELS = {"total_distance_km": ("Distance (km)", "Distance (km)"), "max_speed_kmh": ("Vitesse max (km/h)", "Top speed (km/h)"),
+                 "sprint_count": ("Sprints", "Sprints"), "hir_distance_m": ("Haute intensité (m)", "High-intensity running (m)"),
+                 "dist_per_90": ("Distance par 90 min (km)", "Distance per 90 (km)"),
+                 "player_name": ("Joueur", "Player"), "team_name": ("Équipe", "Team")}
+
+header(t("Intensité physique et tracking", "Physical intensity and tracking"),
+       t("Données ouvertes SkillCorner et Metrica Sports : distances, vitesses, sprints et zones d’intensité, après "
+         "trois filtres de cohérence physique.",
+         "SkillCorner and Metrica Sports open data: distances, speeds, sprints and intensity zones, after three "
+         "physical-consistency filters."))
 
 # ============================================================
-# CONFIG PAGE
-# ============================================================
-st.set_page_config(
-    page_title="Physical Tracking Analysis",
-    page_icon="⚡", layout="wide",
-    initial_sidebar_state="expanded"
-)
-
-st.markdown("""
-<style>
-.stApp { background-color: #0A0A0A; color: #E8E8E8; }
-[data-testid="stSidebar"] {
-    background: linear-gradient(180deg, #0A1628 0%, #0A0A0A 100%);
-    border-right: 1px solid #1A1A2E;
-}
-[data-testid="metric-container"] {
-    background: #111; border: 1px solid #00FF87;
-    border-radius: 8px; padding: 12px;
-}
-.stButton > button {
-    background: linear-gradient(135deg, #00FF87, #00CC6A);
-    color: #0A0A0A; font-weight: bold; border: none; border-radius: 6px;
-}
-.stTabs [data-baseweb="tab"] {
-    background: #111; color: #888; border-radius: 8px 8px 0 0; padding: 8px 20px;
-}
-.stTabs [aria-selected="true"] {
-    background: #1A1A2E; color: #00FF87 !important;
-    border-bottom: 2px solid #00FF87;
-}
-.source-card {
-    background: #111; border-radius: 10px; padding: 16px; margin: 6px 0;
-}
-.source-active { border: 2px solid #00FF87; }
-.source-inactive { border: 1px solid #333; opacity: 0.6; }
-h1, h2, h3 { color: #E8E8E8; }
-</style>
-""", unsafe_allow_html=True)
-
-# ============================================================
-# HEADER
-# ============================================================
-st.markdown("""
-<div style="text-align:center; padding:20px 0 10px 0;">
-    <h1 style="font-size:2.3rem; color:#00FF87; letter-spacing:2px; margin:0;">
-        ⚡ Physical Intensity & Tracking Analysis
-    </h1>
-    <p style="color:#888; font-size:0.95rem; margin:5px 0 0 0;">
-        SkillCorner Open Data &nbsp;·&nbsp; Metrica Sports Open Data
-    </p>
-</div>
-<hr style="border-color:#1A1A2E; margin:10px 0 20px 0;">
-""", unsafe_allow_html=True)
-
-# ============================================================
-# SIDEBAR
+# BARRE LATÉRALE
 # ============================================================
 with st.sidebar:
-    st.markdown("""
-    <div style="text-align:center; margin-bottom:16px;">
-        <span style="font-size:1.8rem;">⚽</span><br>
-        <span style="color:#00FF87; font-weight:bold;">Physical Tracker</span>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown("### Physical Tracker")
+    source = st.radio(t("Source de données", "Data source"), options=[SKC, MET],
+                      format_func=lambda s: "SkillCorner" if s == SKC else "Metrica Sports",
+                      captions=[t("Actions sur balle · A-League 2024/25", "On-ball actions · A-League 2024/25"),
+                                t("Tracking complet · 2 matchs anonymisés", "Full tracking · 2 anonymised matches")])
 
-    # --- SÉLECTION DE LA SOURCE ---
-    st.markdown("### 📡 Source de données")
-
-    source = st.radio(
-        "Choisir la source",
-        options=["SkillCorner", "Metrica Sports"],
-        captions=[
-            "Actions sur balle · A-League 2024/25",
-            "Tracking complet · 2 matchs anonymisés"
-        ],
-        index=0
-    )
-
-    st.markdown("---")
-
-    if source == "SkillCorner":
-        # Charger liste des matchs
-        with st.spinner("Chargement des matchs..."):
+    if source == SKC:
+        with st.spinner(t("Chargement des matchs…", "Loading matches…")):
             matches_dict = get_matches_dict()
-
-        match_options = {
-            mid: f"{info['home']} vs {info['away']} ({info['date']})"
-            for mid, info in matches_dict.items()
-        }
-        selected_match_id = st.selectbox(
-            "Match", options=list(match_options.keys()),
-            format_func=lambda x: match_options[x]
-        )
+        match_options = {mid: f"{i['home']} vs {i['away']} ({i['date']})" for mid, i in matches_dict.items()}
+        selected_match_id = st.selectbox(t("Match", "Match"), options=list(match_options), format_func=lambda x: match_options[x])
         info = matches_dict[selected_match_id]
-        st.markdown(f"""
-        <div class="source-card source-active">
-            <div style="color:#00FF87; font-weight:bold; font-size:0.95rem;">
-                {info['home']} vs {info['away']}
-            </div>
-            <div style="color:#888; font-size:0.8rem;">🏆 {info['competition']}</div>
-            <div style="color:#888; font-size:0.8rem;">📅 {info['date']}</div>
-            <div style="color:#555; font-size:0.75rem; margin-top:8px;">
-                ⚽ Actions sur balle uniquement<br>
-                Vitesse · Zones · Sprints · Contexte tactique
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.caption(f"{info['competition']} · {info['date']}  \n"
+                   + t("Actions avec ballon uniquement : vitesse, zones, sprints, contexte tactique.",
+                       "On-ball actions only: speed, zones, sprints, tactical context."))
+        current_id = selected_match_id
+    else:
+        selected_game_id = st.selectbox(t("Match", "Match"), options=list(METRICA_MATCHES),
+                                        format_func=lambda x: f"{METRICA_MATCHES[x]['label']} ({METRICA_MATCHES[x]['duration']})")
+        st.caption(t("Joueurs anonymisés · tracking XY complet à 25 images/s : vrai kilométrage, carte de chaleur réelle.",
+                     "Anonymised players · full XY tracking at 25 fps: true distance, real heat map."))
+        current_id = selected_game_id
 
-    else:  # Metrica
-        selected_game_id = st.selectbox(
-            "Match", options=list(METRICA_MATCHES.keys()),
-            format_func=lambda x: f"{METRICA_MATCHES[x]['label']} ({METRICA_MATCHES[x]['duration']})"
-        )
-        ginfo = METRICA_MATCHES[selected_game_id]
-        st.markdown(f"""
-        <div class="source-card source-active">
-            <div style="color:#3A7BD5; font-weight:bold; font-size:0.95rem;">
-                {ginfo['label']}
-            </div>
-            <div style="color:#888; font-size:0.8rem;">👤 Joueurs anonymisés</div>
-            <div style="color:#888; font-size:0.8rem;">⏱️ {ginfo['duration']}</div>
-            <div style="color:#555; font-size:0.75rem; margin-top:8px;">
-                📍 Tracking XY complet à 25 fps<br>
-                Vrai kilométrage · Heatmap réelle · Pressing
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    st.markdown("---")
-
-    # --- COMPARAISON SOURCE ---
-    with st.expander("ℹ️ Pourquoi deux sources ?"):
-        st.markdown("""
-        **SkillCorner** et **Metrica** sont complémentaires :
-
-        | Métrique | SKC | Metrica |
-        |---|:---:|:---:|
-        | Vrai kilométrage | ❌ | ✅ |
-        | Vitesse max | ✅ | ✅ |
-        | Zones d'intensité | ✅ | ✅ |
-        | Heatmap complète | ⚠️ | ✅ |
-        | Contexte tactique | ✅ | ❌ |
-        | Pressing / passes | ✅ | ❌ |
-        """)
-
-    st.markdown("---")
-    st.markdown("""
-    <div style="font-size:0.75rem; color:#444; text-align:center;">
-        <b style="color:#666;">Julie Landrevie</b><br>
-        Football Data & Video Analyst
-    </div>
-    """, unsafe_allow_html=True)
+    with st.expander(t("Pourquoi deux sources ?", "Why two sources?")):
+        st.markdown(t("""
+| Indicateur | SkillCorner | Metrica |
+|---|:---:|:---:|
+| Vrai kilométrage | non | oui |
+| Vitesse max | oui | oui |
+| Zones d’intensité | oui | oui |
+| Carte de chaleur complète | partielle | oui |
+| Contexte tactique | oui | non |
+| Pressing et passes | oui | non |
+""", """
+| Metric | SkillCorner | Metrica |
+|---|:---:|:---:|
+| True distance | no | yes |
+| Top speed | yes | yes |
+| Intensity zones | yes | yes |
+| Full heat map | partial | yes |
+| Tactical context | yes | no |
+| Pressing and passes | yes | no |
+"""))
 
 # ============================================================
-# BOUTON DE CHARGEMENT
+# CHARGEMENT
 # ============================================================
-load_col1, load_col2, load_col3 = st.columns([1, 2, 1])
-with load_col2:
-    btn_label = "🚀 Charger les données du match"
-    if source == "Metrica":
-        btn_label = "🚀 Charger le tracking complet (~2 min)"
-    if st.button(btn_label, use_container_width=True):
+c1, c2, c3 = st.columns([1, 2, 1])
+with c2:
+    label = t("Charger les données du match", "Load the match data") if source == SKC else \
+        t("Charger le tracking complet (environ 2 min)", "Load the full tracking (about 2 min)")
+    if st.button(label, width="stretch", type="primary"):
         st.session_state["data_loaded"] = True
         st.session_state["loaded_source"] = source
-        st.session_state["loaded_id"] = selected_match_id if source == "SkillCorner" else selected_game_id
+        st.session_state["loaded_id"] = current_id
 
-if "data_loaded" not in st.session_state:
-    st.session_state["data_loaded"] = False
+data_ready = (st.session_state.get("data_loaded") and st.session_state.get("loaded_source") == source
+              and st.session_state.get("loaded_id") == current_id)
 
-current_id = selected_match_id if source == "SkillCorner" else selected_game_id
-data_ready = (
-    st.session_state.get("data_loaded") and
-    st.session_state.get("loaded_source") == source and
-    st.session_state.get("loaded_id") == current_id
-)
-
-# ============================================================
-# CHARGEMENT & AFFICHAGE
-# ============================================================
 if data_ready:
-
-    # --- CHARGEMENT SELON LA SOURCE ---
-    if source == "SkillCorner":
-        with st.spinner("⏳ Chargement des données SkillCorner..."):
+    if source == SKC:
+        with st.spinner(t("Chargement des données SkillCorner…", "Loading SkillCorner data…")):
             metrics_df = compute_player_metrics(selected_match_id)
-        
-        if metrics_df is None or metrics_df.empty:
-            st.error("❌ Impossible de charger. Vérifie ta connexion.")
-            st.stop()
-
-        zone_colors = ZONE_COLORS
-        data_note = "⚽ Métriques sur **actions avec ballon uniquement** (SkillCorner dynamic events)"
-
-    else:  # Metrica
-        with st.spinner("⏳ Chargement du tracking complet (Home + Away)... ~2 min"):
-            metrics_df = compute_metrica_metrics(selected_game_id)
-
-        if metrics_df is None or metrics_df.empty:
-            st.error("❌ Impossible de charger. Vérifie ta connexion.")
-            st.stop()
-
-        zone_colors = ZONE_COLORS_M
-        data_note = "📍 Métriques sur **tracking complet** (positions XY à 25 fps · Metrica Sports)"
-
-    # --- BADGE SOURCE ---
-    if source == "SkillCorner":
-        badge = '<span style="background:#00FF87;color:#000;padding:3px 10px;border-radius:12px;font-size:0.8rem;font-weight:bold;">⚽ SkillCorner</span>'
+        data_note = t("Indicateurs calculés sur les <b>actions avec ballon uniquement</b> (événements dynamiques SkillCorner).",
+                      "Metrics computed on <b>on-ball actions only</b> (SkillCorner dynamic events).")
     else:
-        badge = '<span style="background:#3A7BD5;color:#fff;padding:3px 10px;border-radius:12px;font-size:0.8rem;font-weight:bold;">📍 Metrica Sports</span>'
+        with st.spinner(t("Chargement du tracking complet (deux équipes)… environ 2 min",
+                          "Loading full tracking (both teams)… about 2 min")):
+            metrics_df = compute_metrica_metrics(selected_game_id)
+        data_note = t("Indicateurs calculés sur le <b>tracking complet</b> (positions XY à 25 images/s, Metrica Sports).",
+                      "Metrics computed on <b>full tracking</b> (XY positions at 25 fps, Metrica Sports).")
+    if metrics_df is None or metrics_df.empty:
+        st.error(t("Chargement impossible. Vérifie ta connexion.", "Could not load. Check your connection."))
+        st.stop()
 
-    st.markdown(f"### 📊 Vue d'ensemble &nbsp; {badge}", unsafe_allow_html=True)
-    st.caption(data_note)
+    note(data_note)
+    k = st.columns(5)
+    kpi(k[0], str(metrics_df["player_name"].nunique()), t("Joueurs", "Players"))
+    if source == SKC:
+        kpi(k[1], f"{fr_num(metrics_df['total_distance_m'].mean(), 0)} m", t("Distance moyenne sur balle", "Average on-ball distance"))
+    else:
+        kpi(k[1], f"{fr_num(metrics_df['total_distance_km'].mean(), 2)} km", t("Distance moyenne totale", "Average total distance"))
+    fastest = metrics_df.loc[metrics_df["max_speed_kmh"].idxmax(), "player_name"]
+    kpi(k[2], f"{fr_num(metrics_df['max_speed_kmh'].max(), 1)} km/h", t(f"Vitesse max ({fastest})", f"Top speed ({fastest})"), accent=True)
+    kpi(k[3], str(int(metrics_df["sprint_count"].sum())), t("Sprints au total", "Total sprints"))
+    kpi(k[4], f"{fr_num(metrics_df['hir_distance_m'].mean(), 0)} m", t("Haute intensité moyenne (> 20 km/h)", "Average high-intensity running (>20 km/h)"))
+    st.write("")
 
-    # --- KPIs ---
-    kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
-    with kpi1:
-        st.metric("👥 Joueurs", metrics_df["player_name"].nunique())
-    with kpi2:
-        if source == "SkillCorner":
-            st.metric("🏃 Distance moy. (sur balle)",
-                      f"{metrics_df['total_distance_m'].mean():.0f} m")
-        else:
-            st.metric("🏃 Distance moy. (totale)",
-                      f"{metrics_df['total_distance_km'].mean():.2f} km")
-    with kpi3:
-        max_speed = metrics_df["max_speed_kmh"].max()
-        fastest = metrics_df.loc[metrics_df["max_speed_kmh"].idxmax(), "player_name"]
-        st.metric("⚡ Vitesse max", f"{max_speed:.1f} km/h", help=f"Par {fastest}")
-    with kpi4:
-        st.metric("🚀 Total sprints", int(metrics_df["sprint_count"].sum()))
-    with kpi5:
-        st.metric("🔥 HIR moy.", f"{metrics_df['hir_distance_m'].mean():.0f} m",
-                  help="High Intensity Running (>20 km/h)")
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([t("Vue match", "Match view"), t("Profil joueur", "Player profile"),
+                                            t("Comparaison", "Comparison"), t("Plusieurs matchs", "Several matches"),
+                                            t("Deux sources", "Two sources")])
 
-    st.markdown("---")
-
-    # ============================================================
-    # ONGLETS
-    # ============================================================
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
-        "🏟️ Vue match", "👤 Profil joueur",
-        "⚔️ Comparaison", "📈 Multi-matchs", "🔄 Sources combinées"
-    ])
-
-    # --- ONGLET 1 : VUE MATCH ---
+    # --- VUE MATCH ---
     with tab1:
-        col_l, col_r = st.columns([3, 1])
-        with col_r:
-            top_n = st.slider("Nb joueurs", 5, len(metrics_df), 15)
+        top_n = st.slider(t("Nombre de joueurs", "Number of players"), 5, len(metrics_df), min(15, len(metrics_df)))
+        chart(plot_distance_bars(metrics_df, top_n=top_n))
+        chart(plot_intensity_zones(metrics_df, top_n=top_n))
+        chart(plot_distance_vs_maxspeed(metrics_df))
+        st.markdown(f"**{t('Tableau complet', 'Full table')}**")
+        cols = [c for c in ["player_name", "team_name", "total_distance_km", "max_speed_kmh", "sprint_count",
+                            "hir_distance_m", "dist_per_90"] if c in metrics_df.columns]
+        sel_team = st.selectbox(t("Équipe", "Team"), [ALL] + list(metrics_df["team_name"].unique()),
+                                format_func=lambda v: t("Toutes", "All") if v == ALL else v)
+        d = metrics_df if sel_team == ALL else metrics_df[metrics_df["team_name"] == sel_team]
+        d = d[cols].rename(columns={c: t(*METRIC_LABELS[c]) for c in cols})
+        st.dataframe(d, width="stretch", height=400, hide_index=True,
+                     column_config={t(*METRIC_LABELS["total_distance_km"]): st.column_config.ProgressColumn(
+                         t(*METRIC_LABELS["total_distance_km"]), format="%.2f", min_value=0,
+                         max_value=float(metrics_df["total_distance_km"].max() or 1))})
 
-        st.markdown("#### 🏃 Distances parcourues")
-        st.plotly_chart(plot_distance_bars(metrics_df, top_n=top_n), use_container_width=True)
-
-        st.markdown("#### ⚡ Zones d'intensité")
-        st.plotly_chart(plot_intensity_zones(metrics_df, top_n=top_n), use_container_width=True)
-
-        st.markdown("#### 🔍 Profils physiques")
-        st.plotly_chart(plot_distance_vs_maxspeed(metrics_df), use_container_width=True)
-
-        st.markdown("#### 📋 Tableau complet")
-        display_cols = ["player_name", "team_name", "total_distance_km",
-                        "max_speed_kmh", "sprint_count", "hir_distance_m", "dist_per_90"]
-        avail = [c for c in display_cols if c in metrics_df.columns]
-        rename = {
-            "player_name": "Joueur", "team_name": "Équipe",
-            "total_distance_km": "Dist. (km)", "max_speed_kmh": "V.max (km/h)",
-            "sprint_count": "Sprints", "hir_distance_m": "HIR (m)", "dist_per_90": "Dist/90"
-        }
-        display_df = metrics_df[avail].rename(columns=rename)
-        teams_f = ["Toutes"] + list(metrics_df["team_name"].unique())
-        sel_team = st.selectbox("Filtrer par équipe", teams_f)
-        if sel_team != "Toutes":
-            display_df = display_df[display_df["Équipe"] == sel_team]
-        st.dataframe(
-            display_df.style.background_gradient(subset=["Dist. (km)"], cmap="YlOrRd"),
-            use_container_width=True, height=400
-        )
-
-    # --- ONGLET 2 : PROFIL JOUEUR ---
+    # --- PROFIL JOUEUR ---
     with tab2:
-        st.markdown("#### 👤 Profil physique d'un joueur")
-
-        player_options = {
-            row["player_name"]: f"{row['player_name']} ({row['team_name']})"
-            for _, row in metrics_df.iterrows()
-        }
-        sel_player = st.selectbox("Choisir un joueur",
-                                  options=list(player_options.keys()),
-                                  format_func=lambda x: player_options[x])
-
+        player_options = {r["player_name"]: f"{r['player_name']} ({r['team_name']})" for _, r in metrics_df.iterrows()}
+        sel_player = st.selectbox(t("Joueur", "Player"), options=list(player_options), format_func=lambda x: player_options[x])
         if sel_player:
             prow = metrics_df[metrics_df["player_name"] == sel_player].iloc[0]
-
-            p1, p2, p3, p4, p5 = st.columns(5)
-            dist_label = "Dist. (km)" if source == "Metrica" else "Dist. sur balle"
-            dist_val = f"{prow['total_distance_km']:.2f} km" if source == "Metrica" else f"{prow['total_distance_m']:.0f} m"
-            with p1: st.metric(dist_label, dist_val)
-            with p2: st.metric("V.max", f"{prow['max_speed_kmh']:.1f} km/h")
-            with p3: st.metric("Sprints", int(prow['sprint_count']))
-            with p4: st.metric("HIR", f"{prow['hir_distance_m']:.0f} m")
-            with p5: st.metric("Dist/90", f"{prow.get('dist_per_90', 0):.2f} km")
-
-            # Timeline vitesse
-            if source == "SkillCorner":
-                pid = prow["player_id"] if "player_id" in prow.index else None
-                if pid:
-                    timeline = compute_speed_timeline(selected_match_id, pid)
-                    if not timeline.empty:
-                        st.plotly_chart(plot_speed_timeline(timeline, sel_player),
-                                        use_container_width=True)
+            p = st.columns(5)
+            if source == MET:
+                kpi(p[0], f"{fr_num(prow['total_distance_km'], 2)} km", t("Distance", "Distance"))
             else:
-                team = prow["team_name"]
-                timeline = compute_metrica_speed_timeline(selected_game_id, sel_player, team)
-                if not timeline.empty:
-                    st.plotly_chart(plot_speed_timeline(timeline, sel_player),
-                                    use_container_width=True)
+                kpi(p[0], f"{fr_num(prow['total_distance_m'], 0)} m", t("Distance sur balle", "On-ball distance"))
+            kpi(p[1], f"{fr_num(prow['max_speed_kmh'], 1)} km/h", t("Vitesse max", "Top speed"))
+            kpi(p[2], str(int(prow["sprint_count"])), "Sprints")
+            kpi(p[3], f"{fr_num(prow['hir_distance_m'], 0)} m", t("Haute intensité", "High intensity"))
+            kpi(p[4], f"{fr_num(prow.get('dist_per_90', 0), 2)} km", t("Distance par 90 min", "Distance per 90"))
+            st.write("")
 
-            # Heatmap
-            st.markdown("##### Carte de chaleur")
-            if source == "SkillCorner":
+            if source == SKC:
+                pid = prow["player_id"] if "player_id" in prow.index else None
+                timeline = compute_speed_timeline(selected_match_id, pid) if pid else pd.DataFrame()
+            else:
+                timeline = compute_metrica_speed_timeline(selected_game_id, sel_player, prow["team_name"])
+            if not timeline.empty:
+                chart(plot_speed_timeline(timeline, sel_player))
+
+            if source == SKC:
                 pid = prow.get("player_id")
                 pos_df = get_player_positions(selected_match_id, pid) if pid else pd.DataFrame()
             else:
                 pos_df = get_metrica_positions(selected_game_id, sel_player, prow["team_name"])
-
             if not pos_df.empty:
-                with st.spinner("Génération heatmap..."):
+                with st.spinner(t("Carte de chaleur…", "Heat map…")):
                     fig_hm = plot_position_heatmap(pos_df, sel_player)
                 if fig_hm:
-                    st.pyplot(fig_hm, use_container_width=True)
+                    st.pyplot(fig_hm, width="stretch")
             else:
-                st.warning("Pas assez de données de position.")
+                st.warning(t("Pas assez de données de position.", "Not enough position data."))
 
-            # Zones d'intensité
-            import plotly.graph_objects as go
-            st.markdown("##### ⚡ Zones d'intensité")
-            zone_names = list(zone_colors.keys())
+            zone_names = list(ZONE_COLORS)
             zone_vals = [prow.get(f"dist_{z}", 0) for z in zone_names]
-            fig_z = go.Figure(go.Bar(
-                x=zone_names, y=zone_vals,
-                marker_color=[zone_colors[z] for z in zone_names],
-                text=[f"{v:.0f}m" for v in zone_vals], textposition="outside"
-            ))
-            fig_z.update_layout(
-                title=f"Zones — {sel_player}",
-                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(10,10,10,0.8)",
-                font={"color": "#E8E8E8"}, height=320
-            )
-            st.plotly_chart(fig_z, use_container_width=True)
+            fig_z = go.Figure(go.Bar(x=[zone_label(z) for z in zone_names], y=zone_vals,
+                                     marker_color=[ZONE_COLORS[z] for z in zone_names],
+                                     text=[f"{fr_num(v, 0)} m" for v in zone_vals], textposition="outside"))
+            fig_z.update_layout(title=t(f"Zones d’intensité : {sel_player}", f"Intensity zones: {sel_player}"),
+                                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                                font={"family": viz.FONT}, height=340, yaxis_title=t("Distance (m)", "Distance (m)"))
+            chart(fig_z)
 
-    # --- ONGLET 3 : COMPARAISON ---
+    # --- COMPARAISON ---
     with tab3:
-        st.markdown("#### ⚔️ Radar comparatif")
-        st.info("Sélectionne 2 à 4 joueurs pour le radar physique.")
-
-        player_list = [(r["player_name"], f"{r['player_name']} ({r['team_name']})")
-                       for _, r in metrics_df.iterrows()]
-        sel_radar = st.multiselect(
-            "Joueurs", options=[p[0] for p in player_list],
-            format_func=lambda x: next(n for pid, n in player_list if pid == x),
-            max_selections=4,
-            default=[player_list[0][0], player_list[1][0]] if len(player_list) >= 2 else []
-        )
-
+        st.caption(t("Choisis 2 à 4 joueurs pour le radar physique.", "Pick 2 to 4 players for the physical radar."))
+        names = metrics_df["player_name"].tolist()
+        teams_of = dict(zip(metrics_df["player_name"], metrics_df["team_name"]))
+        sel_radar = st.multiselect(t("Joueurs", "Players"), options=names, format_func=lambda x: f"{x} ({teams_of[x]})",
+                                   max_selections=4, default=names[:2] if len(names) >= 2 else [])
         if len(sel_radar) >= 2:
-            radar_ids = sel_radar
-            radar_names = sel_radar
-            # Le radar attend player_id — on crée un index temporaire si besoin
             temp_df = metrics_df.copy()
             if "player_id" not in temp_df.columns:
                 temp_df["player_id"] = temp_df["player_name"]
-            radar_ids_mapped = [temp_df[temp_df["player_name"] == p]["player_id"].iloc[0]
-                                 for p in sel_radar]
-            st.plotly_chart(plot_physical_radar(temp_df, radar_ids_mapped, radar_names),
-                            use_container_width=True)
+            ids = [temp_df[temp_df["player_name"] == p]["player_id"].iloc[0] for p in sel_radar]
+            chart(plot_physical_radar(temp_df, ids, sel_radar))
+            cols = [c for c in ["player_name", "team_name", "total_distance_km", "max_speed_kmh", "sprint_count",
+                                "hir_distance_m", "dist_per_90"] if c in metrics_df.columns]
+            cdf = metrics_df[metrics_df["player_name"].isin(sel_radar)][cols]
+            st.dataframe(cdf.rename(columns={c: t(*METRIC_LABELS[c]) for c in cols}), width="stretch", hide_index=True)
 
-            compare_cols = ["player_name", "team_name", "total_distance_km",
-                            "max_speed_kmh", "sprint_count", "hir_distance_m", "dist_per_90"]
-            avail_c = [c for c in compare_cols if c in metrics_df.columns]
-            cdf = metrics_df[metrics_df["player_name"].isin(sel_radar)][avail_c].rename(columns={
-                "player_name": "Joueur", "team_name": "Équipe",
-                "total_distance_km": "Dist. (km)", "max_speed_kmh": "V.max",
-                "sprint_count": "Sprints", "hir_distance_m": "HIR (m)", "dist_per_90": "Dist/90"
-            })
-            st.dataframe(cdf.set_index("Joueur"), use_container_width=True)
-
-    # --- ONGLET 4 : MULTI-MATCHS ---
+    # --- PLUSIEURS MATCHS ---
     with tab4:
-        st.markdown("#### 📈 Évolution sur plusieurs matchs")
-
-        if source == "SkillCorner":
-            other_matches = {mid: f"{info['home']} vs {info['away']} ({info['date']})"
-                             for mid, info in matches_dict.items() if mid != selected_match_id}
-            extra = st.multiselect("Ajouter des matchs SKC", list(other_matches.keys()),
-                                   format_func=lambda x: other_matches[x], max_selections=4)
-            if extra:
-                all_m = [metrics_df.copy()]
-                prog = st.progress(0)
-                for i, mid in enumerate(extra):
-                    with st.spinner(f"Chargement..."):
-                        em = compute_player_metrics(mid)
-                        if em is not None:
-                            all_m.append(em)
-                    prog.progress((i+1)/len(extra))
-                prog.empty()
-                if len(all_m) >= 2:
-                    mc = st.selectbox("Métrique", ["total_distance_km","max_speed_kmh","sprint_count","hir_distance_m"],
-                                      format_func=lambda x: {"total_distance_km":"Dist.(km)","max_speed_kmh":"V.max","sprint_count":"Sprints","hir_distance_m":"HIR(m)"}.get(x,x))
-                    st.plotly_chart(plot_multi_match_evolution(all_m, mc, mc), use_container_width=True)
+        if source == SKC:
+            others = {mid: f"{i['home']} vs {i['away']} ({i['date']})" for mid, i in matches_dict.items() if mid != selected_match_id}
+            extra = st.multiselect(t("Ajouter des matchs SkillCorner", "Add SkillCorner matches"), list(others),
+                                   format_func=lambda x: others[x], max_selections=4)
+            loader, metric_keys = compute_player_metrics, ["total_distance_km", "max_speed_kmh", "sprint_count", "hir_distance_m"]
         else:
-            other_games = {gid: f"{ginfo['label']} ({ginfo['duration']})"
-                           for gid, ginfo in METRICA_MATCHES.items() if gid != selected_game_id}
-            extra = st.multiselect("Ajouter des matchs Metrica", list(other_games.keys()),
-                                   format_func=lambda x: other_games[x], max_selections=1)
-            if extra:
-                all_m = [metrics_df.copy()]
-                for gid in extra:
-                    with st.spinner(f"Chargement Game {gid}..."):
-                        em = compute_metrica_metrics(gid)
-                        if em is not None:
-                            all_m.append(em)
-                if len(all_m) >= 2:
-                    mc = st.selectbox("Métrique", ["total_distance_km","max_speed_kmh","sprint_count"],
-                                      format_func=lambda x: {"total_distance_km":"Distance (km)","max_speed_kmh":"V.max","sprint_count":"Sprints"}.get(x,x))
-                    st.plotly_chart(plot_multi_match_evolution(all_m, mc, mc), use_container_width=True)
+            others = {gid: f"{g['label']} ({g['duration']})" for gid, g in METRICA_MATCHES.items() if gid != selected_game_id}
+            extra = st.multiselect(t("Ajouter un match Metrica", "Add a Metrica match"), list(others),
+                                   format_func=lambda x: others[x], max_selections=1)
+            loader, metric_keys = compute_metrica_metrics, ["total_distance_km", "max_speed_kmh", "sprint_count"]
+        if extra:
+            all_m = [metrics_df.copy()]
+            with st.spinner(t("Chargement…", "Loading…")):
+                for mid in extra:
+                    em = loader(mid)
+                    if em is not None:
+                        all_m.append(em)
+            if len(all_m) >= 2:
+                mc = st.selectbox(t("Indicateur", "Metric"), metric_keys, format_func=lambda x: t(*METRIC_LABELS[x]))
+                chart(plot_multi_match_evolution(all_m, mc, t(*METRIC_LABELS[mc])))
 
-    # --- ONGLET 5 : SOURCES COMBINÉES ---
+    # --- DEUX SOURCES ---
     with tab5:
-        st.markdown("#### 🔄 Pourquoi combiner SkillCorner et Metrica ?")
-
         col_skc, col_met = st.columns(2)
-
         with col_skc:
-            st.markdown("""
-            <div style="background:#0A1A0A; border:1px solid #00FF87; border-radius:10px; padding:16px;">
-                <h4 style="color:#00FF87; margin:0 0 10px 0;">⚽ SkillCorner</h4>
-                <p style="color:#aaa; font-size:0.85rem;">
-                    <b>Broadcast tracking</b> extrait des images TV à 10 fps.
-                    Contient uniquement les <b>actions avec ballon</b>.
-                </p>
-                <p style="color:#888; font-size:0.8rem; margin-top:12px;"><b style="color:#00FF87">✅ Points forts</b></p>
-                <ul style="color:#888; font-size:0.8rem; margin:4px 0;">
-                    <li>Contexte tactique (possession, passes, pressing)</li>
-                    <li>Vitesse précise sur chaque action</li>
-                    <li>Matchs réels top 5 ligues</li>
-                    <li>10 matchs A-League 2024/25 en open data</li>
-                </ul>
-                <p style="color:#888; font-size:0.8rem; margin-top:10px;"><b style="color:#FF5722">❌ Limites</b></p>
-                <ul style="color:#888; font-size:0.8rem; margin:4px 0;">
-                    <li>Pas de kilométrage total</li>
-                    <li>Heatmap partielle (que les actions)</li>
-                    <li>Pas de données de déplacement sans ballon</li>
-                </ul>
-            </div>
-            """, unsafe_allow_html=True)
+            st.markdown(t("""#### SkillCorner
+**Tracking issu des images TV** à 10 images/s, limité aux **actions avec ballon**.
 
+**Points forts**
+- contexte tactique (possession, passes, pressing)
+- vitesse précise sur chaque action
+- 10 matchs d’A-League 2024/25 en données ouvertes
+
+**Limites**
+- pas de kilométrage total
+- carte de chaleur partielle (actions seulement)
+- pas de déplacements sans ballon""", """#### SkillCorner
+**Broadcast tracking** from TV images at 10 fps, limited to **on-ball actions**.
+
+**Strengths**
+- tactical context (possession, passes, pressing)
+- precise speed on every action
+- 10 A-League 2024/25 matches in open data
+
+**Limits**
+- no total distance
+- partial heat map (actions only)
+- no off-ball movement"""))
         with col_met:
-            st.markdown("""
-            <div style="background:#0A0A1A; border:1px solid #3A7BD5; border-radius:10px; padding:16px;">
-                <h4 style="color:#3A7BD5; margin:0 0 10px 0;">📍 Metrica Sports</h4>
-                <p style="color:#aaa; font-size:0.85rem;">
-                    <b>Tracking optique complet</b> à 25 fps.
-                    Enregistre la position de <b>tous les joueurs à chaque frame</b>.
-                </p>
-                <p style="color:#888; font-size:0.8rem; margin-top:12px;"><b style="color:#3A7BD5">✅ Points forts</b></p>
-                <ul style="color:#888; font-size:0.8rem; margin:4px 0;">
-                    <li>Vrai kilométrage (8-11 km/match)</li>
-                    <li>Heatmap complète de tout le match</li>
-                    <li>Déplacements hors ballon visibles</li>
-                    <li>25 fps = granularité maximale</li>
-                </ul>
-                <p style="color:#888; font-size:0.8rem; margin-top:10px;"><b style="color:#FF5722">❌ Limites</b></p>
-                <ul style="color:#888; font-size:0.8rem; margin:4px 0;">
-                    <li>Joueurs anonymisés (Player1...)</li>
-                    <li>Seulement 2 matchs disponibles</li>
-                    <li>Pas de contexte tactique/événements</li>
-                </ul>
-            </div>
-            """, unsafe_allow_html=True)
+            st.markdown(t("""#### Metrica Sports
+**Tracking optique complet** à 25 images/s : la position de **tous les joueurs à chaque image**.
 
-        st.markdown("---")
-        st.markdown("""
-        #### 💡 Ce que les deux sources ensemble permettent d'analyser
+**Points forts**
+- vrai kilométrage (8 à 11 km par match)
+- carte de chaleur de tout le match
+- déplacements sans ballon visibles
 
-        Dans un club professionnel, les analystes combinent typiquement :
-        - Le **tracking complet** (GPS ou optique) pour les métriques physiques brutes
-        - Les **données d'événements** (passes, tirs, duels) pour le contexte tactique
+**Limites**
+- joueurs anonymisés (Player1…)
+- seulement 2 matchs disponibles
+- pas de contexte tactique ni d’événements""", """#### Metrica Sports
+**Full optical tracking** at 25 fps: the position of **every player in every frame**.
 
-        Cette app reproduit cette logique avec des données open source :
-        **Metrica** pour la charge physique réelle, **SkillCorner** pour le contexte tactique
-        et les patterns de jeu avec ballon.
-        """)
+**Strengths**
+- true distance (8 to 11 km per match)
+- heat map of the whole match
+- off-ball movement visible
 
+**Limits**
+- anonymised players (Player1…)
+- only 2 matches available
+- no tactical context or events"""))
+        note(t("En club, on croise le <b>tracking complet</b> (GPS ou optique) pour la charge physique et les <b>données "
+               "d’événements</b> pour le contexte. Cette application reproduit cette logique avec des données ouvertes : "
+               "Metrica pour la charge réelle, SkillCorner pour le contexte des actions avec ballon.",
+               "In a club, analysts combine <b>full tracking</b> (GPS or optical) for physical load with <b>event data</b> "
+               "for context. This app mirrors that with open data: Metrica for true load, SkillCorner for the context of "
+               "on-ball actions."))
 else:
-    # État initial
-    st.markdown("""
-    <div style="text-align:center; padding:50px 20px;">
-        <div style="font-size:3.5rem; margin-bottom:16px;">⚡</div>
-        <h3 style="color:#888;">Sélectionne une source et un match dans la sidebar</h3>
-        <p style="color:#555; font-size:0.9rem; margin-top:8px;">
-            puis clique sur "Charger les données"
-        </p>
-        <div style="display:flex; justify-content:center; gap:16px; margin-top:32px; flex-wrap:wrap;">
-            <div style="background:#0A1A0A; border:1px solid #00FF87; border-radius:10px; padding:16px; max-width:200px;">
-                <div style="color:#00FF87; font-size:1.3rem; font-weight:bold;">SkillCorner</div>
-                <div style="color:#888; font-size:0.8rem; margin-top:6px;">
-                    10 matchs · A-League 2024/25<br>Actions sur balle · Vitesse · Zones
-                </div>
-            </div>
-            <div style="background:#0A0A1A; border:1px solid #3A7BD5; border-radius:10px; padding:16px; max-width:200px;">
-                <div style="color:#3A7BD5; font-size:1.3rem; font-weight:bold;">Metrica Sports</div>
-                <div style="color:#888; font-size:0.8rem; margin-top:6px;">
-                    2 matchs anonymisés<br>Tracking complet · Vrai kilométrage
-                </div>
-            </div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+    note(t("Choisis une source et un match dans la barre latérale, puis clique sur « Charger les données du match ».<br>"
+           "<b>SkillCorner</b> : 10 matchs d’A-League 2024/25, actions sur balle. "
+           "<b>Metrica Sports</b> : 2 matchs anonymisés, tracking complet.",
+           "Pick a source and a match in the sidebar, then click “Load the match data”.<br>"
+           "<b>SkillCorner</b>: 10 A-League 2024/25 matches, on-ball actions. "
+           "<b>Metrica Sports</b>: 2 anonymised matches, full tracking."))
+
+footer("Données : SkillCorner Open Data · Metrica Sports Open Data", "Data: SkillCorner Open Data · Metrica Sports Open Data")
