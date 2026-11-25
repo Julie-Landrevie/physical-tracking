@@ -26,17 +26,34 @@ from src.data_loader import SPEED_ZONES_KMH as SPEED_ZONES
 # COULEURS, LANGUE
 # ============================================================
 
-COLORS = {
-    "primary":   "#0d8f84",   # vert d'eau
-    "accent":    "#cc4a12",   # rouille (une seule mise en avant)
-    "compare":   "#c9c0b1",   # gris de comparaison
-    "ink2":      "#57534e",
-    "bg":        "#f6f1e7",   # fond crème des figures matplotlib
-    "grid":      "rgba(138,133,128,0.25)",
+# Deux palettes (thème clair / sombre) ; set_theme() remplit COLORS, TEAM_COLORS et ZONE_COLORS.
+_PALETTES = {
+    "light": dict(primary="#0d8f84", accent="#cc4a12", compare="#c9c0b1", ink="#1c1917", ink2="#57534e",
+                  bg="#f6f1e7", grid="rgba(138,133,128,0.25)", seq=["#9fd3cc", "#08645c"],
+                  zones=["#c6e4df", "#77c1b8", "#0d8f84", "#cc4a12"], extra=["#8a8580", "#9fd3cc", "#e7a481"]),
+    "dark": dict(primary="#2fb3a6", accent="#e8692f", compare="#6f675d", ink="#f2ede4", ink2="#b9b1a6",
+                 bg="#13110f", grid="rgba(185,177,166,0.18)", seq=["#1e554f", "#89d5cc"],
+                 zones=["#1e554f", "#267b71", "#2fb3a6", "#e8692f"], extra=["#8a8379", "#1e554f", "#8a4a2c"]),
 }
-TEAM_COLORS = [COLORS["primary"], COLORS["accent"], COLORS["compare"], COLORS["ink2"]]
-# Zones d'intensité : du plus clair au plus foncé, sprint en rouille
-ZONE_COLORS = {"Jogging": "#c6e4df", "Running": "#77c1b8", "Haute intensité": "#0d8f84", "Sprint": "#cc4a12"}
+COLORS: dict = {}
+TEAM_COLORS: list = []
+# Zones d'intensité : de la plus faible à la plus forte, sprint en rouille
+ZONE_COLORS: dict = {}
+_EXTRA: list = []
+
+
+def set_theme(dark: bool) -> None:
+    """Palette du thème affiché (à appeler à chaque exécution, après jl_ui.setup)."""
+    p = _PALETTES["dark" if dark else "light"]
+    COLORS.clear()
+    COLORS.update({k: v for k, v in p.items() if k not in ("zones", "extra")})
+    TEAM_COLORS[:] = [p["primary"], p["accent"], p["compare"], p["ink2"]]
+    ZONE_COLORS.clear()
+    ZONE_COLORS.update(zip(["Jogging", "Running", "Haute intensité", "Sprint"], p["zones"]))
+    _EXTRA[:] = p["extra"]
+
+
+set_theme(False)
 ZONE_EN = {"Jogging": "Jogging", "Running": "Running", "Haute intensité": "High intensity", "Sprint": "Sprint"}
 FONT = "Lato, 'Helvetica Neue', Arial, sans-serif"
 
@@ -192,7 +209,7 @@ def plot_distance_vs_maxspeed(metrics_df: pd.DataFrame) -> go.Figure:
 
 
 # ============================================================
-# 5. CARTE DE CHALEUR (mplsoccer) — fond crème dans les deux thèmes
+# 5. CARTE DE CHALEUR (mplsoccer) — fond du thème affiché
 # ============================================================
 
 def plot_position_heatmap(pos_df: pd.DataFrame, player_name: str):
@@ -204,11 +221,11 @@ def plot_position_heatmap(pos_df: pd.DataFrame, player_name: str):
                   line_color=COLORS["compare"], linewidth=1.5, goal_type="box", line_zorder=3)
     fig, ax = plt.subplots(figsize=(12, 8), facecolor=COLORS["bg"])
     pitch.draw(ax=ax)
-    cmap = LinearSegmentedColormap.from_list("jl_teal", [COLORS["bg"], "#9fd3cc", COLORS["primary"], "#08645c"])
+    cmap = LinearSegmentedColormap.from_list("jl_teal", [COLORS["bg"], COLORS["seq"][0], COLORS["primary"], COLORS["seq"][1]])
     pitch.kdeplot(player_df["x"], player_df["y"], ax=ax, cmap=cmap, fill=True, alpha=0.85, levels=50,
                   bw_adjust=0.5, zorder=2)
     ax.set_title(_t(f"Carte de chaleur : {player_name}", f"Heat map: {player_name}"),
-                 color="#1c1917", fontsize=16, pad=15)
+                 color=COLORS["ink"], fontsize=16, pad=15)
     plt.tight_layout()
     return fig
 
@@ -266,4 +283,4 @@ def plot_multi_match_evolution(all_metrics: list, metric_col: str, metric_label:
             hovertemplate=f"<b>%{{x}}</b><br>{metric_label}{_t(' :', ':')} %{{y:.2f}}<extra>{player_name}</extra>"))
     return _layout(fig, _t(f"Évolution : {metric_label}", f"Trend: {metric_label}"),
                    xaxis={"title": _t("Match", "Match"), "tickangle": -30}, yaxis={"title": metric_label},
-                   colorway=TEAM_COLORS + ["#8a8580", "#9fd3cc", "#e7a481"])
+                   colorway=TEAM_COLORS + _EXTRA)

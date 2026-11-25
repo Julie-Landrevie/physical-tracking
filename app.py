@@ -9,7 +9,7 @@ import streamlit as st
 
 matplotlib.use("Agg")
 
-from jl_ui import footer, fr_num, header, kpi, lang, note, setup, t  # noqa: E402
+from jl_ui import footer, fr_num, header, is_dark, kpi, lang, note, setup, t  # noqa: E402
 
 setup("Physical Tracking — Julie Landrevie", "Physical Tracking — Julie Landrevie", icon="⚡")
 
@@ -25,6 +25,7 @@ from src.viz import (ZONE_COLORS, plot_distance_bars, plot_distance_vs_maxspeed,
                      zone_label)
 
 viz.set_lang(lang())
+viz.set_theme(is_dark())
 SKC, MET = "skillcorner", "metrica"
 ALL = "__all__"
 
